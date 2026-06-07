@@ -1,0 +1,3 @@
+Implementation of the classes: CLI, Indexer, models.py
+Indexer is functionnal.
+Searcher cannot yet return the right(s) source for the query, but always the same(s)
