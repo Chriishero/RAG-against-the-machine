@@ -8,6 +8,7 @@ from langchain_text_splitters import (
     RecursiveCharacterTextSplitter, PythonCodeTextSplitter
     )
 import bm25s
+from bm25s.tokenization import Tokenized
 import pickle
 import os
 
@@ -29,7 +30,8 @@ class Indexer(BaseModel):
 
         self._create_directory()
         retriever = bm25s.BM25()
-        retriever.index(corpus)
+        tokenized_corpus = self._tokenize(corpus)
+        retriever.index(tokenized_corpus)
         retriever.save("data/processed/bm25_index/")
         with open("data/processed/chunks/chunks.pkl", "wb") as f:
             pickle.dump(chunks, f)
@@ -76,6 +78,10 @@ class Indexer(BaseModel):
         chunks += code_splitter.split_documents(docs[1])
         chunks = self._add_chunk_metadata(chunks)
         return chunks
+
+    def _tokenize(self, corpus: List[str]) -> List[List[str]] | Tokenized:
+        query_tokens = bm25s.tokenize(corpus)
+        return query_tokens
 
     def _add_chunk_metadata(self, chunks: List[Document]) -> List[Document]:
         for i in range(0, len(chunks)):
