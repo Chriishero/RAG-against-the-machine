@@ -1,7 +1,10 @@
 from pydantic import BaseModel
+from typing import Dict, Any
+from pathlib import Path
+import os
+import json
 from .RAG import Indexer, Searcher
-import bm25s
-import pickle
+from .Parser import Parser
 
 
 class CLI(BaseModel):
@@ -11,24 +14,10 @@ class CLI(BaseModel):
         print("Ingestion complete! Indices saved under data/processed/")
 
     def search(self, query: str, k: int) -> None:
-        try:
-            retriever = bm25s.BM25.load(
-                "data/processed/bm25_index/", load_corpus=False
-            )
-        except FileNotFoundError as e:
-            print(f"Index not found: {e}.\n"
-                  "You must run the 'index' command beforehand.")
-            return
-
-        try:
-            with open("data/processed/chunks/chunks.pkl", "rb") as f:
-                corpus = pickle.load(f)
-        except FileNotFoundError as e:
-            print(f"Corpus (chunks) not found: {e}.\n"
-                  "You must run the 'index' command beforehand.")
-            return
-
-        searcher = Searcher(retriever=retriever, corpus=corpus)
+        searcher = Searcher(
+            index_path="data/processed/bm25_index/",
+            chunks_path="data/processed/chunks/chunks.pkl"
+        )
         srcs = searcher.retrieve(query=query, n_chunk=k)
         for src in srcs:
             print("--------------------")
@@ -39,7 +28,25 @@ class CLI(BaseModel):
     def search_dataset(
             self, dataset_path: str, k: int, save_directory: str
             ) -> None:
-        print(f"Search dataset: {dataset_path} for k={k} in {save_directory}")
+        searcher = Searcher(
+            index_path="data/processed/bm25_index/",
+            chunks_path="data/processed/chunks/chunks.pkl"
+        )
+        parser = Parser(dataset_path=dataset_path)
+        dataset = parser.dataset
+        questions = dataset["rag_questions"]
+        res: Dict[str, Any] = {"search_results": [], "k": k}
+        for q in questions:
+            search: Dict[str, Any] = {
+                "question_id": q["question_id"], "retrieved_sources": []
+            }
+            srcs = searcher.retrieve(query=q["question"], n_chunk=k)
+            for src in srcs:
+                s_dict = src.model_dump()
+                search["retrieved_sources"].append(s_dict)
+            res["search_results"].append(search)
+        file_name = Path(dataset_path).name
+        self.__save_search_result(res, save_directory, file_name)
 
     def answer(self, query: str, k: int) -> None:
         print(f"Answer: {query} for k={k}")
@@ -49,3 +56,14 @@ class CLI(BaseModel):
             ) -> None:
         print(f"Answer dataset: {student_search_results_path} \
               in {save_directory}")
+
+    def __save_search_result(
+            self, result: Dict[str, Any], save_directory: str, file_name: str
+            ) -> None:
+        os.makedirs(save_directory, exist_ok=True)
+
+        try:
+            with open(f"{save_directory}/{file_name}", "w") as f:
+                json.dump(result, f, indent=4)
+        except Exception as e:
+            print("Error while saving 'search_dataset' command results: ", e)

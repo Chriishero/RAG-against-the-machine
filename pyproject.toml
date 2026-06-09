@@ -4,8 +4,23 @@ version = "0.1.0"
 readme = "README.md"
 requires-python = "==3.10.*"
 dependencies = [
+    "flake8",
+    "flake8-pyproject",
+    "mypy",
     "fire",
     "langchain",
     "langchain_community",
     "bm25s[core]",
+]
+
+[tool.flake8]
+exclude = [
+    "data/",
+    ".venv"
+]
+
+[tool.mypy]
+exclude = [
+    "data/",
+    ".venv"
 ]

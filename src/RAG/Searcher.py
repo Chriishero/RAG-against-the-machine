@@ -1,8 +1,9 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
 from typing import List
 from langchain_core.documents import Document
 import bm25s
 from bm25s.tokenization import Tokenized
+import pickle
 from ..models import MinimalSource
 
 
@@ -10,8 +11,41 @@ class Searcher(BaseModel):
     model_config = {
         "arbitrary_types_allowed": True
     }
-    retriever: bm25s.BM25
-    corpus: List[Document] = Field(min_length=1)
+    index_path: str = Field(min_length=1)
+    chunks_path: str = Field(min_length=1)
+    _retriever: bm25s.BM25 = PrivateAttr()
+    _corpus: List[Document] = PrivateAttr()
+
+    @property
+    def retriever(self) -> bm25s.BM25:
+        return self._retriever
+
+    @property
+    def corpus(self) -> List[Document]:
+        return self._corpus
+
+    @model_validator(mode="after")
+    def validator(self) -> "Searcher":
+        try:
+            self._retriever = bm25s.BM25.load(
+                self.index_path, load_corpus=False
+            )
+        except FileNotFoundError as e:
+            raise ValueError(
+                f"Index not found: {e}.\n"
+                "You must run the 'index' command beforehand."
+            )
+
+        try:
+            with open(self.chunks_path, "rb") as f:
+                self._corpus = pickle.load(f)
+        except FileNotFoundError as e:
+            raise ValueError(
+                f"Corpus (chunks) not found: {e}.\n"
+                "You must run the 'index' command beforehand."
+            )
+
+        return self
 
     def retrieve(self, query: str, n_chunk: int) -> List[MinimalSource]:
         if not query.strip():
@@ -39,6 +73,7 @@ class Searcher(BaseModel):
                     last_character_index=last_idx
                 )
             )
+
         return sources
 
     def _tokenize(self, query: str) -> List[List[str]] | Tokenized:

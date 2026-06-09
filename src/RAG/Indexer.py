@@ -26,7 +26,6 @@ class Indexer(BaseModel):
         docs = self._load()
         chunks = self._chunking(docs)
         corpus = [chunk.page_content for chunk in chunks]
-        print(corpus[0])
 
         self._create_directory()
         retriever = bm25s.BM25()
