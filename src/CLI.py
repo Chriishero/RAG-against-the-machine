@@ -69,7 +69,7 @@ class CLI(BaseModel):
             host="http://localhost:11434",
             chunks_path=searcher.chunks_path
         )
-        answer = llm.answer(search_res, docs)
+        answer = llm.answer(search_res)
         print(answer.answer)
 
     def answer_dataset(
@@ -97,7 +97,7 @@ class CLI(BaseModel):
             range(0, len(search_results.search_results)),
             desc="Processing dataset answer"
         ):
-            answer = llm.answer(search_results.search_results[i], None)
+            answer = llm.answer(search_results.search_results[i])
             res.search_results.append(answer)
 
         file_name = Path(student_search_results_path).name

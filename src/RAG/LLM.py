@@ -2,8 +2,8 @@ from pydantic import BaseModel, Field, PrivateAttr, model_validator
 from ollama import Client
 from langchain_core.documents import Document
 import pickle
-from typing import List, Dict, Optional
-from ..models import MinimalSearchResults, MinimalAnswer
+from typing import List, Dict, Any
+from ..models import MinimalSearchResults, MinimalAnswer, MinimalSource
 
 
 class LLM(BaseModel):
@@ -15,6 +15,7 @@ class LLM(BaseModel):
     chunks_path: str = Field(min_length=1)
     _client: Client = PrivateAttr()
     _corpus: list[Document] = PrivateAttr()
+    _chunks_map: Dict[Any, str] = PrivateAttr()
 
     @model_validator(mode="after")
     def validator(self) -> "LLM":
@@ -31,59 +32,55 @@ class LLM(BaseModel):
             raise ValueError(
                 f"Failed to open the corpus file '{self.chunks_path}': {e}"
             )
+        self._chunks_map = {}
+        for doc in self._corpus:
+            key = (
+                doc.metadata.get("file_path"),
+                doc.metadata.get("first_character_index"),
+                doc.metadata.get("last_character_index")
+            )
+            self._chunks_map[key] = doc.page_content
         return self
 
     def answer(
-            self, search_result: MinimalSearchResults,
-            docs: Optional[list[Document]]) -> MinimalAnswer:
-        if docs is None:
-            docs = self._corpus
+            self, search_result: MinimalSearchResults) -> MinimalAnswer:
         res = MinimalAnswer(
                 **search_result.model_dump(),
                 answer="I cannot find this information "
                        "in the provided documents."
         )
-        chunks: list[Document] = []
+        chunks: List[str] = []
         srcs = search_result.retrieved_sources
         for src in srcs:
-            for doc in docs:
-                data = src.model_dump()
-                if data == doc.metadata:
-                    chunks.append(doc)
+            key = (
+                src.file_path,
+                src.first_character_index,
+                src.last_character_index
+            )
+            content = self._chunks_map[key]
+            if content:
+                chunks.append(content)
         if not chunks:
             return res
 
         messages: List[Dict[str, str]] = []
         system_prompt = (
-            "You are a specialized assistant in documentation based answer.\n"
-            "You must answer only based on the documents provided "
-            "in the context.\n"
-            "Your answer must be concise and precise.\n"
-            "Do not answer in a general manner.\n"
-            "If the query is completely unrelated to the provided context, "
-            "or if the context does not contain any relevant information, "
-            "you must answer exactly: "
-            "'I cannot find this information in the provided documents.'"
-            "Do not invent anything.\n"
-            "Do not answer with markdown."
-            "Answer only in plain text, "
-            "no asterisks, no code blocks, no headings."
+            "Answer only based on the provided documents. "
+            "Be concise and precise. Ignore off-topic or "
+            "contradictory documents. "
+            "If the query is unrelated to the provided documents, say exactly:"
+            " 'I cannot find this information in the provided documents.' "
+            "No markdown, no code bocks. Plain text only."
         )
         messages.append({"role": "system", "content": system_prompt})
 
         examples = [
             (
-                "Context:\nThe Eiffel Tower is located in Paris.\n"
-                "Query: Where is the Eiffel Tower?",
+                "Where is the Eiffel Tower?",
                 "The Eiffel Tower is located in Paris."
             ),
             (
-                "Context:\nvLLM is a fast and easy-to-use library for LLM"
-                "inference and serving. Originally developed in the Sky"
-                "Computing Lab at UC Berkeley, vLLM has evolved into a"
-                "community-driven project with contributions from both"
-                "academia and industry.\n"
-                "Query: What is vLLM?",
+                "What is vLLM?",
                 "vLLM is a fast and easy-to-use library for LLM inference and"
                 "serving."
             )
@@ -102,7 +99,13 @@ class LLM(BaseModel):
         try:
             response = self._client.chat(
                 model=self.model_name,
-                messages=messages
+                messages=messages,
+                stream=False,
+                options={
+                    "temperature": 0.0,
+                    "num_gpu": -1,
+                    "enable_thinking": False
+                }
             )
         except Exception as e:
             raise ValueError(
