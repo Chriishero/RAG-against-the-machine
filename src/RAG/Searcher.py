@@ -1,10 +1,10 @@
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
-from typing import List
+from typing import List, Tuple, Optional
 from langchain_core.documents import Document
 import bm25s
 from bm25s.tokenization import Tokenized
 import pickle
-from ..models import MinimalSource
+from ..models import MinimalSource, MinimalSearchResults, UnansweredQuestion
 
 
 class Searcher(BaseModel):
@@ -47,14 +47,22 @@ class Searcher(BaseModel):
 
         return self
 
-    def retrieve(self, query: str, n_chunk: int) -> List[MinimalSource]:
+    def retrieve(
+            self, query_id: Optional[str], query: str, n_chunk: int
+            ) -> Tuple[MinimalSearchResults, List[Document]]:
+        if query_id is None:
+            question = UnansweredQuestion(question_str=query)
+        else:
+            question = UnansweredQuestion(
+                question_id=query_id, question_str=query
+            )
         if not query.strip():
             raise ValueError("Query cannot be empty.")
-
         query_tokens = self._tokenize(query)
         indices, scores = self.retriever.retrieve(
             query_tokens=query_tokens, k=n_chunk
         )
+        print("score: ", scores)
         if len(indices) == 0:
             raise IndexError("No documents found for the given query.")
 
@@ -73,8 +81,11 @@ class Searcher(BaseModel):
                     last_character_index=last_idx
                 )
             )
-
-        return sources
+        search_results = MinimalSearchResults(
+            **question.model_dump(),
+            retrieved_sources=sources
+        )
+        return search_results, docs
 
     def _tokenize(self, query: str) -> List[List[str]] | Tokenized:
         query_tokens = bm25s.tokenize(query)

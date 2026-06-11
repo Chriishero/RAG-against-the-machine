@@ -3,7 +3,10 @@ from .CLI import CLI
 
 
 def main() -> None:
-    fire.Fire(CLI)
+    try:
+        fire.Fire(CLI)
+    except Exception as e:
+        print(e)
 
 
 if __name__ == "__main__":

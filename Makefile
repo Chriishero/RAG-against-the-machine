@@ -11,10 +11,11 @@ else
 	ACTIVE =
 endif
 
-.PHONY: install run debug clean lint lint-strict
+all: install
 
 install:
 	$(UV) sync $(ACTIVE)
+	ollama pull qwen3:0.6b
 
 run:
 ifeq ($(CMD),)
@@ -31,14 +32,16 @@ endif
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 	find . -type d -name ".mypy_cache" -exec rm -rf {} +
+	rm -rf .venv dist .cache/ .pytest_cache
+	rm -rf data/output/ data/processed/
 
 lint:
-	$(UV) run $(ACTIVE) $(PYTHON) -m flake8 .
-	$(UV) run $(ACTIVE) $(PYTHON) -m mypy $(MYPY_FLAGS) .
+	$(UV) run $(ACTIVE) $(PYTHON) -m flake8 src/
+	$(UV) run $(ACTIVE) $(PYTHON) -m mypy $(MYPY_FLAGS) src/
 
 lint-strict:
-	$(UV) run $(ACTIVE) $(PYTHON) -m flake8 .
-	$(UV) run $(ACTIVE) $(PYTHON) -m mypy --strict .
+	$(UV) run $(ACTIVE) $(PYTHON) -m flake8 src/
+	$(UV) run $(ACTIVE) $(PYTHON) -m mypy --strict src/
 
 help:
 	@echo "Usage:"
@@ -50,3 +53,5 @@ help:
 	@echo "	make run CMD=index"
 	@echo "	make run CMD=search ARGS='\"What is Retrieval Augmented Generation?\" --k 10'"
 	@echo "	make run CMD='search \"What is Retrieval Augmented Generation?\" --k 10'"
+
+.PHONY: all install run debug clean lint lint-strict help
