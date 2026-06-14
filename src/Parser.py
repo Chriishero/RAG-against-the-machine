@@ -26,13 +26,13 @@ class Parser(BaseModel):
             with open(self.dataset_path, "r") as f:
                 self._dataset_str = f.read()
         except FileNotFoundError as e:
-            raise ValueError(f"{self.dataset_path} does not exist: {e}")
+            raise ValueError(e)
 
         try:
             self._dataset = json.loads(self._dataset_str)
         except json.JSONDecodeError as e:
             raise ValueError(
-                f"{self.dataset_path} is not a valid json file: {e}"
+                f"'{self.dataset_path}' is not a valid json file: {e}"
             )
         return self
 

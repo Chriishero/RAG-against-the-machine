@@ -1,4 +1,5 @@
 import fire
+from pydantic import ValidationError
 from .CLI import CLI
 
 
@@ -8,8 +9,12 @@ def main() -> None:
     """
     try:
         fire.Fire(CLI)
-    except Exception as e:
+    except ValidationError as e:
+        print(e.errors()[0]["msg"].removeprefix("Value error, "))
+    except ValueError as e:
         print(e)
+    except KeyboardInterrupt:
+        print("Keyboard interrupt.")
 
 
 if __name__ == "__main__":

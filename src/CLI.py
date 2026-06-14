@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from pathlib import Path
 import os
+from typing import Any, Dict
 from tqdm import tqdm
 from .RAG import Indexer, Searcher, LLM, Evaluator
 from .Parser import Parser
@@ -145,6 +146,10 @@ class CLI(BaseModel):
         parser = Parser(dataset_path=student_search_results_path)
         data = parser.dataset
         search_results = StudentSearchResults.model_validate(data)
+        n_question = len(search_results.search_results)
+        print(f"Loaded {n_question} questions from "
+              f"{student_search_results_path}")
+
         llm = LLM(
             model_name="qwen3:0.6b",
             host="http://localhost:11434",
@@ -160,6 +165,8 @@ class CLI(BaseModel):
         ):
             answer = llm.answer(search_results.search_results[i])
             res.search_results.append(answer)
+
+        print(f"Processed {len(res.search_results)} of {n_question}")
 
         file_name = Path(student_search_results_path).name
         self.__save_dataset_results(res, save_directory, file_name)
@@ -177,9 +184,15 @@ class CLI(BaseModel):
             student_search_results_path (str): Path to the search results.
             dataset_path (str): Path to the ground truth reference dataset.
         """
+        def load_dataset(path: str) -> Dict[str, Any]:
+            parser = Parser(dataset_path=path)
+            return parser.dataset
+
+        sr = load_dataset(student_search_results_path)
+        d = load_dataset(dataset_path)
         evaluator = Evaluator(
-            student_search_results_path=student_search_results_path,
-            dataset_path=dataset_path
+            student_search_results=sr,
+            dataset=d
         )
         res = evaluator.evaluate()
         print("Evaluation results:")

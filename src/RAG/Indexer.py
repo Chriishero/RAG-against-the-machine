@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, model_validator
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Union
 from langchain_core.documents import Document
 from langchain_community.document_loaders import (
     DirectoryLoader, TextLoader, PythonLoader
@@ -9,7 +9,6 @@ from langchain_text_splitters import (
     )
 import bm25s
 from bm25s.tokenization import Tokenized
-from typing import Union
 import pickle
 import os
 
@@ -38,8 +37,8 @@ class Indexer(BaseModel):
     }
     directory_path: str = Field(default="data/raw/vllm-0.10.1/", min_length=1)
     max_chunk_size: int = Field(ge=1, le=2000)
-    text_chunk_overlap: Optional[int] = Field(default=None, ge=0)
-    code_chunk_overlap: Optional[int] = Field(default=None, ge=0)
+    text_chunk_overlap: Optional[Union[int, float]] = Field(default=None, ge=0)
+    code_chunk_overlap: Optional[Union[int, float]] = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def validator(self) -> "Indexer":
@@ -51,6 +50,11 @@ class Indexer(BaseModel):
         If the chunk overlap is between 0 and 1 (exclusive), it is interpreted
         as a percentage of 'max_chunk_size' and multipilied accordingly.
         """
+        if os.path.isdir(self.directory_path) is False:
+            raise ValueError(
+                f"'{self.directory_path}' does not exists."
+            )
+
         if self.text_chunk_overlap is None:
             self.text_chunk_overlap = int(self.max_chunk_size * 0.15)
         if self.code_chunk_overlap is None:
@@ -60,6 +64,18 @@ class Indexer(BaseModel):
             self.text_chunk_overlap *= self.max_chunk_size
         if self.code_chunk_overlap > 0 and self.code_chunk_overlap < 1:
             self.code_chunk_overlap *= self.max_chunk_size
+
+        if self.text_chunk_overlap >= self.max_chunk_size:
+            raise ValueError(
+                "Optional parameter 'text_chunk_overlap must be lower than "
+                "'max_chunk_size'.")
+        if self.code_chunk_overlap >= self.max_chunk_size:
+            raise ValueError(
+                "Optional parameter 'code_chunk_overlap must be lower than "
+                "'max_chunk_size'.")
+
+        self.text_chunk_overlap = int(self.text_chunk_overlap)
+        self.code_chunk_overlap = int(self.code_chunk_overlap)
 
         return self
 

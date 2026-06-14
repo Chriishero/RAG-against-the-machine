@@ -1,203 +1,166 @@
-# Moulinette
+This project has been created as part of the 42 curriculum by cvillene.
 
+# RAG against the machine
 
+## Description
+RAG against the machine aims to create a complete Retrieval-Augmented Generation system that can answer questions about a codebase.
+An AI model is trained on a certain amount of data, so its generated answer are solely based on this amount of data. To ensure that a LLM (Large Language Model) has more up-to-date knowledge, we can eiter retrain it (process that takes a long time) or give it access to an external source of information. RAG allows to do the later.
+For this project, we will use the LLM qwen3:0.6b and give it some context, from a codebase, relevant to the requested question so that it does not invent any answer (hallucinate).
 
-Evaluation system for RAG submissions. Validates your search results and calculates recall metrics.
-
-
-
-## Installation
-
-
-
+## Instruction
+### Installation:
 ```bash
-
-uv venv && uv sync
-
-direnv allow  # or source .envrc
-
+make install
 ```
+Install the required packages to run this project, and load the LLM.
 
-
-## CLI Commands
-
-
-
-### evaluate_student_search_results
-
-
-
-Evaluate your search results against the ground truth dataset.
-
-
-
+### Execution:
 ```bash
-
-uv run python -m moulinette evaluate_student_search_results \
-
-    <student_results_path> \
-
-    <dataset_path> \
-
-    [--k K] \
-
-    [--max_context_length MAX_LENGTH]
-
+make run CMD=<command> ARGS=<arguments>
 ```
-
-
-
-
-**Arguments:**
-
-| Argument | Type | Default | Description |
-
-|----------|------|---------|-------------|
-
-| `student_results_path` | str | required | Path to student search results JSON |
-
-| `dataset_path` | str | required | Path to ground truth dataset JSON |
-
-| `--k` | int | 10 | Maximum number of sources per question |
-
-| `--max_context_length` | int | 2000 | Maximum context length per source |
-
-
-
-**Example:**
-
+or
 ```bash
+uv run python3 -m src <command> <arguments>
+```
+A Command-Line Inteface (CLI) is provided with Python Fire.
 
-uv run python -m moulinette evaluate_student_search_results \
+## System architecture
+The RAG pipeline follows few steps to generate a query-related answer about the codebase.
 
-    ../data/output/search_results/dataset_code_public.json \
+### 1. Ingestion:
+The system ingests every documents from the provided codebase. To do that, we must splits them into chunks of fixed size because the LLM can only text a limited amount of 'tokens' as context. Then, theses chunks are store to the disk into a tokenized vector representation, allowing to retrieve information from it.
 
-    ../data/datasets/AnsweredQuestions/dataset_code_public.json \
+### 2. Retrieval:
+Before answer generation, we must retrieve the most relevant chunks for the given query. The BM25 algorithm is used to find the most relevant chunks and to rank them.
 
-    --k 10 \
+### 3. Generation:
+Finally, the retrieved chunks are provided to the LLM as a context for the query. The AI will then extract the necessary information from it to generate a concise and relevant answer.
 
-    --max_context_length 2000
+## Chunking strategy
+### Text Chunking:
+A method called 'Recursive character text splitter' is used to efficiently split text documents to several chunks. It consists of taking a list of characters (ex: ['\n\n', '\n', ' ', ' ']) and a maximum size of chunks (ex: 100). Then the text is recursively splitted using each of these characters until all the chunks have a size lesser or equal to the maximum size of chunks.
+An another useful parameter can be used: 'chunk_overlap'. It is the number of character overlapping each chunks, allowing to not lose context between the chunks.
 
+### Python code Chunking:
+Here, the Python scripts are split by logical constructs (e.g., functions, classes) to maintain logic in the chunks, and again, an overlapping parameter can be use to keep context.
+
+## Retrieval method
+### Best Matching 25:
+BM25 is a ranking algorithm used to determine how relevant a document is to a given search query. It computes a relevance score between a query and a document usign three main components: Term Frequency, Inverse Document Frequency and Document Length Normalization.
+1. Term Frequency measures how often a query term appears in a document, a document containing a query term multiple times is more likely to be relevant. However, BM25 adds a saturation effect, to prevents overly long documents from being unfairly favored.
+2. Inverse Document Frequency measures the importance of a term accross the entire corpus (list of chunks). Rare term are considered more informative than common ones like 'the', 'a', etc.
+3. Document Length Normalization is the normalization of each scores to prevent long documents from dominating the rankings.
+The final scores calculation of each chunks is calculated by summing up the contributions of all query terms in a document.
+
+## Performance analysis
+To analyse the performances of the RAG system, the Recall@k metric is used:
+Recall@k = TP@k / (TP@k + FN@)
+Where, TP@k (True Positives) are the retrieved relevant documents among the k first retrieved ones.
+       FN@k (False Negaties) are the not retrieved relevant documents.
+It measure the rate of relevant document compared to the ground truth.
+### Performances
+1. Documentation questions:
+- Recall@1: 60.0%
+- Recall@3: 76.0%
+- Recall@5: 85.0%
+- Recall@10: 90.0%
+
+2. Code questions:
+- Recall@1: 30.0%
+- Recall@3: 48.0%
+- Recall@5: 54.0%
+- Recall@10: 59.0%
+
+## Design decisions
+In this RAG system, 5 main classes are implemented:
+- CLI: the main orchestrator, contains every CLI commands as function who will use the appropriate interface.
+- Indexer: execute entirely the ingestion pipelines (loading, chunking and indexing).
+- Searcher: use BM25 to retrieve relevant chunks from a specific query.
+- Evaluator: apply the Recall@k metrics on the search results.
+```mermaid
+classDiagram
+  class CLI {
+    index()
+    search()
+    search_dataset()
+    answer()
+    answer_dataset()
+    evaluate()
+  }
+  class Indexer {
+    indexing()
+  }
+  class Searcher {
+    retrieve()
+  }
+  class LLM {
+    answer()
+  }
+  class Evaluator {
+    evaluate()
+  }
+  CLI --> Indexer
+  CLI --> Searcher
+  CLI --> LLM
+  CLI --> Evaluator
 ```
 
+## Challenges faced:
+The main difficulties were to understand the new key concepts and which algorithm choose for this implementation of a RAG system.
 
-
-**Output:**
-
-- Validates student data format
-
-- Calculates Recall@1, Recall@3, Recall@5, Recall@10
-
-- Returns `True` if Recall@5 >= 50%, `False` otherwise
-
-
-
-
-### evaluate_student_answers
-
-
-
-Evaluate your generated answers (not yet implemented).
-
-
-
+## Example usage:
+### Indexing:
 ```bash
+make run CMD=index ARGS='--directory path codebase/ --max_chunk_size 2000 --text_code_overlap 50 --python_code_overlap 0.15'
 
-uv run python -m moulinette evaluate_student_answers <student_answer_path>
-
+Every arguments are optionals:
+- directory_path: string
+- max_chunk_size: integer (>0 and <=2000)
+- text_chunk_overlap: integer (number of chars) or float (percentage of max_chunk_size)
+- code_chunk_overlap: integer (number of chars) or foat (percentage of max_chunk_size)
 ```
 
+### Searching:
+For a unique query,
+```bash
+make run CMD=search ARGS='"What is vLLM?" --k 10'
 
+Arguments:
+- --query: string (mandatory)
+- --k: integer (optional)
+```
+For a whole dataset:
+```bash
+make run CMD=search_dataset ARGS='--dataset_path data/dataset/UnansweredQuestions/dataset_docs_public.json --k 10 --save_directory data/output/search_results/
 
-## Pass Criteria
-
-
-| Dataset | Metric | Threshold |
-
-|---------|--------|-----------|
-
-| Code | Recall@5 | >= 50% |
-
-| Docs | Recall@5 | >= 80% |
-
-
-
-## Input File Formats
-
-
-
-### Your Search Results (`student_results_path`)
-
-```json
-
-{
-
-  "search_results": [
-
-    {
-
-      "question_id": "uuid",
-
-      "question_str": "What is the question text?",
-
-      "retrieved_sources": [
-
-        {
-
-          "file_path": "path/to/file",
-
-          "first_character_index": 0,
-
-          "last_character_index": 500
-
-        }
-
-      ]
-
-    }
-
-  ],
-
-  "k": 10
-
-}
-
+Arguments:
+- --dataset_path: string (mandatory)
+- --k: integer (optional)
+- --save_directory: string (mandatory)
 ```
 
+### Answering
+For a unique query,
+```bash
+make run CMD=answer ARGS='"What is vLLM?" --k 10'
 
+Arguments:
+- --query: string (mandatory)
+- --k: integer (optional)
+```
+For a whole dataset:
+```bash
+make run CMD=answer_dataset ARGS='--student_search_results_path data/output/search_results/dataset_docs_public.json --save_directory data/output/search_results_and_answer/
 
-### Ground Truth Dataset (`dataset_path`)
+Arguments:
+- --student_search_results_path: string (mandatory)
+- --save_directory: string (mandatory)
+```
 
-```json
-
-{
-
-  "rag_questions": [
-
-    {
-
-      "question_id": "uuid",
-
-      "question": "What is...",
-
-      "answer": "The answer is...",
-
-      "sources": [
-
-        {
-
-          "file_path": "path/to/file",
-
-          "first_character_index": 0,
-
-          "last_character_index": 500
-
-        }
-
-      ]
-
-    }
-
-  ]
-
-}
+## Resources
+- https://arxiv.org/pdf/2407.01219
+- https://www.geeksforgeeks.org/nlp/what-is-bm25-best-matching-25-algorithm/
+- https://pypi.org/project/BM25/
+- https://realpython.com/ollama-python/
+- Some other resources on langchain and python-fire
+- AI was primary use to understand the subject.

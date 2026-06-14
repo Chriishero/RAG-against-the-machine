@@ -1,6 +1,5 @@
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 from typing import List, Dict, Any
-import json
 from ..models import MinimalSource
 
 
@@ -15,8 +14,8 @@ class Evaluator(BaseModel):
     model_config = {
         "arbitrary_types_allowed": True
     }
-    student_search_results_path: str = Field(min_length=1)
-    dataset_path: str = Field(min_length=1)
+    student_search_results: Dict[str, Any] = Field(min_length=1)
+    dataset: Dict[str, Any] = Field(min_length=1)
 
     _list_retrieve_srcs: List[List[MinimalSource]] = PrivateAttr()
     _list_true_srcs: List[List[MinimalSource]] = PrivateAttr()
@@ -41,17 +40,8 @@ class Evaluator(BaseModel):
         '_list_retrieve_srcs' and '_list_true_srcs'. And finally check if they
         are of the same length.
         """
-        def load_dataset(path: str) -> Any:
-            try:
-                with open(path, "r") as f:
-                    return json.load(f)
-            except Exception as e:
-                raise ValueError(
-                    f"Cannot open '{path}': {e}"
-                )
-
-        search_res = load_dataset(self.student_search_results_path)
-        answer_dataset = load_dataset(self.dataset_path)
+        search_res = self.student_search_results
+        answer_dataset = self.dataset
 
         self._list_retrieve_srcs = [
             [MinimalSource.model_validate(src)
