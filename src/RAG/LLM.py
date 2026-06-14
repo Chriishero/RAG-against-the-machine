@@ -1,12 +1,25 @@
+
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 from ollama import Client
 from langchain_core.documents import Document
 import pickle
 from typing import List, Dict, Any
-from ..models import MinimalSearchResults, MinimalAnswer, MinimalSource
+from ..models import MinimalSearchResults, MinimalAnswer
 
 
 class LLM(BaseModel):
+    """
+    Interface to interact with a local Large Language Model.
+
+    Use an Ollama server to interact with any specified LLM (if available),
+    and can generate an optimal answer by using a system prompt,
+    few-shot examples and a large context from many documents.
+
+    Attributes:
+        model_name (str): name of the model.
+        host (str): URL of the Ollama server.
+        chunks_path (str): path to the chunks pickle file.
+    """
     model_config = {
         "arbitrary_types_allowed": True
     }
@@ -19,6 +32,14 @@ class LLM(BaseModel):
 
     @model_validator(mode="after")
     def validator(self) -> "LLM":
+        """
+        Validate the model after the object creation.
+
+        Initialize private attributes:
+        - Ollama client for chatting with the model.
+        - Chunks loaded from the pickle file (create by the 'index' command).
+        - A mapping from chunk metadata to page content.
+        """
         try:
             self._client = Client(host=self.host, headers={})
         except Exception as e:
@@ -40,10 +61,26 @@ class LLM(BaseModel):
                 doc.metadata.get("last_character_index")
             )
             self._chunks_map[key] = doc.page_content
+
         return self
 
     def answer(
             self, search_result: MinimalSearchResults) -> MinimalAnswer:
+        """
+        Generate an answer using the LLM based on the provided search result.
+
+        Get the message list via '__get_messages', calls the LLm via
+        '_client.chat()', and returns a 'MinimalAnswer' enriched with the
+        answer or a default message if the context is unrelated to the query.
+
+        Args:
+            search_result (MinimalSearchResults): contains the query and the
+                retrieved sources.
+
+        Returns:
+            MinimalAnswer: A copy of 'search_results' with the 'answer' field
+                set.
+        """
         res = MinimalAnswer(
                 **search_result.model_dump(),
                 answer="I cannot find this information "
@@ -63,6 +100,52 @@ class LLM(BaseModel):
         if not chunks:
             return res
 
+        messages = self.__get_messages(
+            search_result.question_str,
+            chunks
+        )
+
+        try:
+            response = self._client.chat(
+                model=self.model_name,
+                messages=messages,
+                stream=False,
+                options={
+                    "temperature": 0.0,
+                    "num_gpu": -1,
+                    "enable_thinking": False
+                }
+            )
+        except Exception as e:
+            raise ValueError(
+                f"Failed to get answer from {self.model_name}: {e}"
+            )
+        if response.message.content is None:
+            raise ValueError(
+                f"Failed to get answer from {self.model_name}."
+            )
+
+        res.answer = response.message.content
+
+        return res
+
+    def __get_messages(
+            self, query: str, chunks: List[str]
+    ) -> List[Dict[str, str]]:
+        """
+        Build the message list for the LLM.
+
+        Constructs a prompt containing a system prompt, few-shot examples,
+        a context built from the provided chunks, and the user query.
+
+        Args:
+            query (str): User query.
+            chunks (List[str]): Context chunks retrieved from the knowledge
+                base.
+
+        Returns:
+            List[Dict[str, str]]: Complete message list for the LLM
+        """
         messages: List[Dict[str, str]] = []
         system_prompt = (
             "Answer only based on the provided documents. "
@@ -70,7 +153,7 @@ class LLM(BaseModel):
             "contradictory documents. "
             "If the query is unrelated to the provided documents, say exactly:"
             " 'I cannot find this information in the provided documents.' "
-            "No markdown, no code bocks. Plain text only."
+            "No markdown, no code blocks. Plain text only."
         )
         messages.append({"role": "system", "content": system_prompt})
 
@@ -93,27 +176,7 @@ class LLM(BaseModel):
             f"Context:\n[Document {i}]\n{chunk}"
             for i, chunk in enumerate(chunks)
         )
-        user_prompt = context + "\n" + "Query:\n" + search_result.question_str
+        user_prompt = context + "\n" + "Query:\n" + query
         messages.append({"role": "user", "content": user_prompt})
 
-        try:
-            response = self._client.chat(
-                model=self.model_name,
-                messages=messages,
-                stream=False,
-                options={
-                    "temperature": 0.0,
-                    "num_gpu": -1,
-                    "enable_thinking": False
-                }
-            )
-        except Exception as e:
-            raise ValueError(
-                f"Failed to get answer from {self.model_name}: {e}"
-            )
-        if response.message.content is None:
-            raise ValueError(
-                f"Failed to get answer from {self.model_name}."
-            )
-        res.answer = response.message.content
-        return res
+        return messages

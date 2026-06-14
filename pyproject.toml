@@ -13,15 +13,3 @@ dependencies = [
     "bm25s[core]",
     "ollama>=0.6.2",
 ]
-
-[tool.flake8]
-exclude = [
-    "data/",
-    ".venv"
-]
-
-[tool.mypy]
-exclude = [
-    "data/",
-    ".venv"
-]
