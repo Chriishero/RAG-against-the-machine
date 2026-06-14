@@ -175,7 +175,7 @@ Arguments:
 - https://realpython.com/ollama-python/
 - https://towardsdatascience.com/how-to-evaluate-retrieval-quality-in-rag-pipelines-precisionk-recallk-and-f1k/
 - Some other resources on langchain and python-fire
-AI was used to
+#### AI was used to
 - understand the subject.
 - generate a good system prompt for the LLM.
 - understand the use of hyperparameters of the function `Client().chat()` of the ollama module.
