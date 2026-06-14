@@ -4,7 +4,7 @@ from ollama import Client
 from langchain_core.documents import Document
 import pickle
 from typing import List, Dict, Any
-from ..models import MinimalSearchResults, MinimalAnswer
+from ..models import MinimalSearchResults, MinimalAnswer, MinimalSource
 
 
 class LLM(BaseModel):
@@ -37,7 +37,7 @@ class LLM(BaseModel):
 
         Initialize private attributes:
         - Ollama client for chatting with the model.
-        - Chunks loaded from the pickle file (create by the 'index' command).
+        - Chunks loaded from the pickle file (created by the 'index' command).
         - A mapping from chunk metadata to page content.
         """
         try:
@@ -69,9 +69,10 @@ class LLM(BaseModel):
         """
         Generate an answer using the LLM based on the provided search result.
 
-        Get the message list via '__get_messages', calls the LLm via
-        '_client.chat()', and returns a 'MinimalAnswer' enriched with the
-        answer or a default message if the context is unrelated to the query.
+        Get the chunks via '__get_chunks and the message list via
+        '__get_messages'. Calls the LLM via '_client.chat()', and returns a
+        'MinimalAnswer' enriched with the answer or a default message if the
+        context is unrelated to the query.
 
         Args:
             search_result (MinimalSearchResults): contains the query and the
@@ -86,17 +87,8 @@ class LLM(BaseModel):
                 answer="I cannot find this information "
                        "in the provided documents."
         )
-        chunks: List[str] = []
         srcs = search_result.retrieved_sources
-        for src in srcs:
-            key = (
-                src.file_path,
-                src.first_character_index,
-                src.last_character_index
-            )
-            content = self._chunks_map[key]
-            if content:
-                chunks.append(content)
+        chunks = self.__get_chunks(srcs)
         if not chunks:
             return res
 
@@ -128,6 +120,34 @@ class LLM(BaseModel):
         res.answer = response.message.content
 
         return res
+
+    def __get_chunks(self, srcs: List[MinimalSource]) -> List[str]:
+        """
+        Get the query related chunks from a list of source.
+
+        Loops over each source and creates a key using their attributes, then
+        use it in a mapping between sources attributes and chunks to retrieve
+        the corresponding chunks.
+
+        Args:
+            srcs (List[MinimalSource]): Sources contained in the corpus.
+
+        Returns:
+            List[str]: Query-related chunks.
+        """
+        chunks: List[str] = []
+
+        for src in srcs:
+            key = (
+                src.file_path,
+                src.first_character_index,
+                src.last_character_index
+            )
+            content = self._chunks_map[key]
+            if content:
+                chunks.append(content)
+
+        return chunks
 
     def __get_messages(
             self, query: str, chunks: List[str]
